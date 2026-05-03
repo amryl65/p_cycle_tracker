@@ -81,7 +81,48 @@
       margin-bottom: 10px;
       border-radius: 4px;
       line-height: 1.5;
+      position: relative;
     }
+    /* New style for ongoing cycles */
+    .cycle-entry.ongoing {
+      border-left: 4px solid #ff9800;
+      background: #fff8eb;
+    }
+    .ongoing-badge {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: #ff9800;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 0.75em;
+      font-weight: bold;
+    }
+
+    .update-box {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px solid #ffe0b2;
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .update-box input[type="date"] {
+      margin-top: 0;
+      padding: 6px;
+    }
+    .update-btn {
+      margin-top: 0;
+      padding: 8px 12px;
+      background-color: #ff9800;
+      color: white;
+      width: auto;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .update-btn:hover { background-color: #e68a00; }
+
     .stats {
       margin-top: 8px;
       padding-top: 8px;
@@ -101,7 +142,7 @@
     }
     .delete-btn {
       background: none; color: #d9534f; padding: 0; margin-top: 10px;
-      font-size: 14px; text-decoration: underline; width: auto; font-weight: normal;
+      font-size: 14px; text-decoration: underline; width: auto; font-weight: normal; cursor: pointer;
     }
     .delete-btn:hover { background: none; color: #c9302c; }
 
@@ -113,13 +154,9 @@
       border-radius: 8px;
       text-align: center;
     }
-    .backup-btn {
-      background-color: #333; color: white; padding: 10px; margin-top: 10px;
-    }
+    .backup-btn { background-color: #333; color: white; padding: 10px; margin-top: 10px; }
     .backup-btn:hover { background-color: #222; }
-    .restore-btn {
-      background-color: transparent; color: #5c67f2; border: 1px solid #5c67f2; padding: 10px; margin-top: 10px;
-    }
+    .restore-btn { background-color: transparent; color: #5c67f2; border: 1px solid #5c67f2; padding: 10px; margin-top: 10px; }
     .restore-btn:hover { background-color: #e8eaf6; }
     .hidden { display: none; }
   </style>
@@ -129,10 +166,10 @@
   <div class="container">
     <h2>Cycle Tracker</h2>
     
-    <label for="startDate">Period Start Date:</label>
+    <label for="startDate">Period Start Date (Required):</label>
     <input type="date" id="startDate">
     
-    <label for="endDate">Period End Date:</label>
+    <label for="endDate">Period End Date (Optional):</label>
     <input type="date" id="endDate">
 
     <label for="cycleNotes">Notes (Symptoms, flow, etc.):</label>
@@ -149,9 +186,7 @@
     <div class="backup-section">
       <h3>Backup & Restore</h3>
       <p style="font-size: 0.85em; color: #666; margin-top: 0;">Save your data to a file, or load it onto a new device.</p>
-      
       <button class="backup-btn" onclick="exportData()">Export Backup File</button>
-      
       <input type="file" id="importFile" class="hidden" accept=".json" onchange="importData(event)">
       <button class="restore-btn" onclick="document.getElementById('importFile').click()">Import Data</button>
     </div>
@@ -170,14 +205,14 @@
 
     function saveCycle() {
       const start = document.getElementById('startDate').value;
-      const end = document.getElementById('endDate').value;
+      const end = document.getElementById('endDate').value; // Now optional
       const notes = document.getElementById('cycleNotes').value;
 
-      if (!start || !end) {
-        alert("Please select both a start and end date.");
+      if (!start) {
+        alert("Please select a start date.");
         return;
       }
-      if (new Date(end) < new Date(start)) {
+      if (end && new Date(end) < new Date(start)) {
         alert("End date cannot be before the start date.");
         return;
       }
@@ -198,6 +233,30 @@
       displayCycles();
     }
 
+    // NEW FUNCTION: Easily update the end date later
+    function updateEndDate(id) {
+      const endInput = document.getElementById(`update-end-${id}`).value;
+      
+      if (!endInput) {
+        alert("Please select an end date to save.");
+        return;
+      }
+
+      let cycles = JSON.parse(localStorage.getItem('myCycles')) || [];
+      const cycleIndex = cycles.findIndex(c => c.id === id);
+
+      if (cycleIndex !== -1) {
+        if (new Date(endInput) < new Date(cycles[cycleIndex].start)) {
+          alert("End date cannot be before the start date.");
+          return;
+        }
+        
+        cycles[cycleIndex].end = endInput;
+        localStorage.setItem('myCycles', JSON.stringify(cycles));
+        displayCycles();
+      }
+    }
+
     function deleteCycle(id) {
       if(confirm("Are you sure you want to delete this log?")) {
         let cycles = JSON.parse(localStorage.getItem('myCycles')) || [];
@@ -207,20 +266,14 @@
       }
     }
 
-    // --- NEW BACKUP FUNCTIONS ---
     function exportData() {
       const data = localStorage.getItem('myCycles') || '[]';
-      // Create a blob (a file-like object) of the JSON data
       const blob = new Blob([data], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
-      
-      // Create a temporary link to trigger the download
       const a = document.createElement('a');
       a.href = url;
-      // Name the file dynamically based on today's date
       const today = new Date().toISOString().split('T')[0];
       a.download = `cycle-tracker-backup-${today}.json`;
-      
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -230,53 +283,39 @@
     function importData(event) {
       const file = event.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = function(e) {
         try {
           const importedData = JSON.parse(e.target.result);
-          
           if (Array.isArray(importedData)) {
             if(confirm("This will replace all your current logs with the backup data. Proceed?")) {
               localStorage.setItem('myCycles', JSON.stringify(importedData));
               displayCycles();
               alert("Data successfully restored!");
             }
-          } else {
-            alert("This doesn't look like a valid backup file.");
-          }
-        } catch (error) {
-          alert("Error reading the file. Please make sure it is a valid .json file.");
-        }
-        // Reset the file input so you can re-select the same file if needed
+          } else { alert("This doesn't look like a valid backup file."); }
+        } catch (error) { alert("Error reading the file. Please make sure it is a valid .json file."); }
         event.target.value = '';
       };
       reader.readAsText(file);
     }
-    // ----------------------------
 
     function renderYearTabs(cycles) {
       const tabsContainer = document.getElementById('yearTabs');
       tabsContainer.innerHTML = '';
-
       if (cycles.length === 0) return;
 
       const years = new Set(cycles.map(c => c.start.split('-')[0]));
       const sortedYears = Array.from(years).sort((a, b) => b - a);
       sortedYears.unshift('All');
 
-      if (!sortedYears.includes(currentYearFilter)) {
-        currentYearFilter = 'All';
-      }
+      if (!sortedYears.includes(currentYearFilter)) { currentYearFilter = 'All'; }
 
       sortedYears.forEach(year => {
         const btn = document.createElement('button');
         btn.className = `year-tab ${year === currentYearFilter ? 'active' : ''}`;
         btn.textContent = year;
-        btn.onclick = () => {
-          currentYearFilter = year;
-          displayCycles(); 
-        };
+        btn.onclick = () => { currentYearFilter = year; displayCycles(); };
         tabsContainer.appendChild(btn);
       });
     }
@@ -294,9 +333,15 @@
       }
 
       const cyclesWithStats = cycles.map((cycle, index) => {
-        const periodLength = calculateDaysBetween(cycle.start, cycle.end) + 1;
-        let cycleLengthText = "<em>Needs next period to calculate</em>";
+        // Handle period length
+        let periodLengthText = "<em>Ongoing...</em>";
+        if (cycle.end) {
+          const periodLength = calculateDaysBetween(cycle.start, cycle.end) + 1;
+          periodLengthText = `<strong>${periodLength} days</strong>`;
+        }
         
+        // Handle cycle length
+        let cycleLengthText = "<em>Needs next period to calculate</em>";
         if (index < cycles.length - 1) {
           const previousCycle = cycles[index + 1];
           const cycleLength = calculateDaysBetween(previousCycle.start, cycle.start);
@@ -305,7 +350,7 @@
         
         return { 
           ...cycle, 
-          periodLength: periodLength, 
+          periodLengthText: periodLengthText, 
           cycleLengthText: cycleLengthText, 
           year: cycle.start.split('-')[0]
         };
@@ -327,13 +372,25 @@
           notesHtml = `<div class="notes-display"><strong>Notes:</strong><br>${escapedNotes}</div>`;
         }
 
+        const isOngoing = !cycle.end;
         const entryDiv = document.createElement('div');
-        entryDiv.className = 'cycle-entry';
+        entryDiv.className = `cycle-entry ${isOngoing ? 'ongoing' : ''}`;
+        
+        let endDisplayHtml = isOngoing 
+          ? `<div class="update-box">
+               <input type="date" id="update-end-${cycle.id}">
+               <button class="update-btn" onclick="updateEndDate(${cycle.id})">Save End</button>
+             </div>`
+          : `<strong>End:</strong> ${cycle.end} <br>`;
+
+        let badgeHtml = isOngoing ? `<span class="ongoing-badge">Active</span>` : '';
+
         entryDiv.innerHTML = `
+          ${badgeHtml}
           <strong>Start:</strong> ${cycle.start} <br>
-          <strong>End:</strong> ${cycle.end} <br>
+          ${endDisplayHtml}
           <div class="stats">
-            Period lasted: <strong>${cycle.periodLength} days</strong> <br>
+            Period lasted: ${cycle.periodLengthText} <br>
             Total cycle length: ${cycle.cycleLengthText}
           </div>
           ${notesHtml}
